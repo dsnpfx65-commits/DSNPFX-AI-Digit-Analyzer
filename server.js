@@ -5,6 +5,5 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/health", (_, res) => res.json({ ok: true, app: "DSNPFX Digit Intelligence" }));
-app.get("*", (_, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
 app.listen(PORT, () => console.log("DSNPFX Digit Intelligence listening on " + PORT));
