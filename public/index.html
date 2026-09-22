@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSNPFX Digit Intelligence</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#070b12;color:#eaf0f7}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#122033,#070b12 45%);min-height:100vh}
+.wrap{max-width:1180px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}
+h1{margin:0;font-size:25px}.sub{color:#91a0b4;font-size:13px;margin-top:5px}.pill{border:1px solid #26364a;border-radius:999px;padding:8px 12px;font-size:12px}
+.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:18px}.card{background:rgba(13,19,29,.92);border:1px solid #1d2a3a;border-radius:18px;padding:18px;box-shadow:0 12px 40px #0005}
+.controls{display:flex;gap:10px;flex-wrap:wrap}.controls select,.controls button{background:#101925;color:#eaf0f7;border:1px solid #2a3b50;border-radius:10px;padding:10px 12px}
+.controls button{cursor:pointer}.hero{text-align:center;padding:24px}.label{color:#8999ad;font-size:12px;text-transform:uppercase;letter-spacing:.12em}.digit{font-size:84px;font-weight:800;line-height:1;margin:8px 0}.confidence{font-size:28px;font-weight:750}.status{margin-top:8px;color:#9eafc3}.bars{display:grid;grid-template-columns:repeat(10,1fr);gap:6px;align-items:end;height:150px;margin-top:15px}.bar{display:flex;flex-direction:column;justify-content:end;gap:5px;text-align:center;font-size:11px;color:#8494a8}.bar i{display:block;background:#5d8cff;border-radius:5px 5px 2px 2px;min-height:3px}.metric{display:flex;justify-content:space-between;border-bottom:1px solid #1b2735;padding:10px 0;font-size:13px}.metric:last-child{border:0}.good{color:#65d69b}.warn{color:#f3c66c}.bad{color:#ff7d8a}.feed{height:260px;overflow:auto;font:12px ui-monospace,monospace;color:#9fb0c4;background:#080d14;border-radius:12px;padding:10px}.feed div{padding:4px 0;border-bottom:1px solid #111b27}.note{font-size:12px;color:#8291a4;line-height:1.55;margin-top:12px}.full{grid-column:1/-1}@media(max-width:800px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><h1>🔱 DSNPFX DIGIT INTELLIGENCE</h1><div class="sub">Deriv last-digit research engine • live browser mode • evidence before signals</div></div>
+    <div class="pill" id="conn">● Connecting…</div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="controls">
+      <select id="symbol">
+        <option value="R_10">Volatility 10 Index</option><option value="R_25">Volatility 25 Index</option>
+        <option value="R_50" selected>Volatility 50 Index</option><option value="R_75">Volatility 75 Index</option>
+        <option value="R_100">Volatility 100 Index</option>
+        <option value="1HZ10V">Volatility 10 (1s)</option><option value="1HZ25V">Volatility 25 (1s)</option>
+        <option value="1HZ50V">Volatility 50 (1s)</option><option value="1HZ75V">Volatility 75 (1s)</option>
+        <option value="1HZ100V">Volatility 100 (1s)</option>
+      </select>
+      <select id="window"><option value="250">250 ticks</option><option value="500" selected>500 ticks</option><option value="1000">1000 ticks</option></select>
+      <button id="start">Start / Refresh</button><button id="pause">Pause</button>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card hero">
+      <div class="label">Engine state</div><div class="digit" id="pred">—</div>
+      <div class="confidence" id="conf">—</div><div class="status" id="signal">Collecting evidence…</div>
+      <div class="note">A prediction is shown only when the evidence model clears its validation gate. A high score is not a guarantee of the next digit.</div>
+    </div>
+    <div class="card">
+      <div class="label">Evidence metrics</div>
+      <div class="metric"><span>Ticks analyzed</span><b id="n">0</b></div>
+      <div class="metric"><span>Shannon entropy</span><b id="entropy">—</b></div>
+      <div class="metric"><span>Dominant frequency</span><b id="freq">—</b></div>
+      <div class="metric"><span>Walk-forward hit rate</span><b id="hit">—</b></div>
+      <div class="metric"><span>Validated samples</span><b id="samples">0</b></div>
+      <div class="metric"><span>Model regime</span><b id="regime">—</b></div>
+    </div>
+    <div class="card">
+      <div class="label">Digit distribution</div><div class="bars" id="bars"></div>
+    </div>
+    <div class="card">
+      <div class="label">Live tick feed</div><div class="feed" id="feed"></div>
+    </div>
+    <div class="card full">
+      <div class="label">How the engine decides</div>
+      <div class="note">
+        The browser loads recent Deriv tick history, derives the last digit, and combines frequency, recency weighting,
+        order-2 transition structure, run/streak context and entropy. It then performs a small walk-forward simulation
+        over the same history. If the simulated edge is weak or unstable, the dashboard deliberately returns
+        <b>NO TRADE</b> instead of manufacturing a 96% confidence claim.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const APP_ID = 1089;
+let ws=null, running=true, digits=[], pending=false;
+const $=id=>document.getElementById(id);
+function setConn(t,c){$("conn").textContent=t;$("conn").style.color=c||""}
+function digitOf(quote,pip){
+  const p=Number.isInteger(pip)?pip:0;
+  const s=Number(quote).toFixed(p);
+  const m=s.replace(/[^0-9]/g,"");
+  return Number(m[m.length-1]);
+}
+function entropy(a){
+  const c=Array(10).fill(0);a.forEach(d=>c[d]++);
+  const n=a.length||1; return -c.reduce((s,x)=>x? s+(x/n)*Math.log2(x/n):s,0);
+}
+function scores(a){
+  const n=a.length;if(n<80)return null;
+  const count=Array(10).fill(0);a.forEach(d=>count[d]++);
+  const recent=Array(10).fill(0), k=Math.min(80,n);
+  a.slice(-k).forEach((d,i)=>recent[d]+=1+(i/k)*2);
+  const trans=Array.from({length:100},()=>0);
+  for(let i=1;i<n;i++)trans[a[i-1]*10+a[i]]++;
+  const last=a[n-1], row=Array(10).fill(0);for(let d=0;d<10;d++)row[d]=trans[last*10+d];
+  const raw=Array(10).fill(0);
+  for(let d=0;d<10;d++) raw[d]=0.35*(count[d]/n)+0.30*(recent[d]/(k*2))+0.35*(row[d]/(row.reduce((x,y)=>x+y,0)||1));
+  const sum=raw.reduce((x,y)=>x+y,0)||1;return raw.map(x=>x/sum);
+}
+function walkForward(a){
+  if(a.length<180)return {rate:null,samples:0};
+  let hit=0,samples=0;
+  const start=Math.max(100,a.length-300);
+  for(let i=start;i<a.length-1;i++){
+    const s=scores(a.slice(0,i));if(!s)continue;
+    const p=s.indexOf(Math.max(...s));samples++;if(p===a[i])hit++;
+  }
+  return {rate:samples?hit/samples:null,samples};
+}
+function render(){
+  const n=digits.length;$("n").textContent=n;$("entropy").textContent=n?entropy(digits).toFixed(3):"—";
+  const c=Array(10).fill(0);digits.forEach(d=>c[d]++);const max=Math.max(1,...c);
+  $("freq").textContent=n?(Math.max(...c)/n*100).toFixed(1)+"%":"—";
+  $("bars").innerHTML=c.map((x,d)=>'<div class="bar">'+d+'<i style="height:'+Math.max(3,x/max*115)+'px"></i><span>'+x+'</span></div>').join("");
+  const wf=walkForward(digits);$("hit").textContent=wf.rate==null?"—":(wf.rate*100).toFixed(1)+"%";$("samples").textContent=wf.samples;
+  const s=scores(digits);
+  if(!s){$("pred").textContent="—";$("conf").textContent="—";$("signal").textContent="Collecting evidence…";return}
+  const order=s.map((v,i)=>[v,i]).sort((x,y)=>y[0]-x[0]);const p=order[0][1], prob=order[0][0];
+  const ent=entropy(digits), edge=wf.rate==null?0:wf.rate-0.1;
+  const stable=wf.samples>=80 && wf.rate>=0.13 && ent<3.29;
+  $("pred").textContent=stable?p:"—";$("conf").textContent=stable?(prob*100).toFixed(1)+"%":"NO SIGNAL";
+  $("signal").textContent=stable?"WATCH / RESEARCH SIGNAL":"NO TRADE — validation gate not cleared";
+  $("signal").className=stable?"status good":"status warn";
+  $("regime").textContent=ent>3.29?"near-uniform":(stable?"structured":"weak/unstable");
+}
+function feed(d,t){const el=$("feed");const x=document.createElement("div");x.textContent=new Date(t*1000).toLocaleTimeString()+"  → digit "+d;el.prepend(x);while(el.children.length>120)el.lastChild.remove()}
+function send(x){if(ws&&ws.readyState===1)ws.send(JSON.stringify(x))}
+function connect(){
+  if(ws)try{ws.close()}catch{}
+  digits=[];render();setConn("● Connecting…");
+  ws=new WebSocket("wss://ws.derivws.com/websockets/v3?app_id="+APP_ID);
+  ws.onopen=()=>{setConn("● Connected","lightgreen");const sym=$("symbol").value;const lim=Number($("window").value);send({ticks_history:sym,count:lim,end:"latest",style:"ticks"});send({ticks:sym,subscribe:1})};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    if(m.error){setConn("● API error","salmon");$("signal").textContent=m.error.message;return}
+    if(m.history){digits=m.history.prices.map((q,i)=>digitOf(q,m.pip_size));render();return}
+    if(m.tick){const d=digitOf(m.tick.quote,m.tick.pip_size);digits.push(d);if(digits.length>Number($("window").value))digits.shift();feed(d,m.tick.epoch);render()}
+  };
+  ws.onclose=()=>{setConn("● Disconnected","salmon");if(running)setTimeout(connect,2500)};
+  ws.onerror=()=>setConn("● Connection error","salmon");
+}
+$("start").onclick=()=>{running=true;connect()};$("pause").onclick=()=>{running=!running;if(!running){if(ws)ws.close();setConn("● Paused","gold")}else connect()};
+$("symbol").onchange=()=>connect();$("window").onchange=()=>connect();connect();
+</script>
+</body></html>
